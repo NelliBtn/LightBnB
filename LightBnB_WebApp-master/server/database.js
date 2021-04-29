@@ -90,17 +90,96 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
+
+
+
+
+
+
+
+
 const getAllProperties = (options, limit = 10) => {
+
+  const queryParams = [];
+
+  // the beginning of the query (up to WHERE)
+  let queryString = `
+  SELECT properties.*, AVG(property_reviews.rating) AS average_rating 
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id`
+
+  const beginWith = function() {
+    if (queryParams[0]) {
+      queryString += ` AND `
+    } else {
+      queryString += ` WHERE `
+    }
+  }
+
+  // IF CITY FILTER
+  if (options.city) {
+    // % syntax for LIKE must be part of the parameter, not the query
+    queryParams.push(`%${options.city}%`)
+    queryString += `
+    WHERE city LIKE $${queryParams.length}`
+  }
+
+  // IF OWNER ID
+  if (options.owner_id) {
+    beginWith();
+    queryParams.push(options.owner_id);
+    queryString += ` 
+    owner_id = $${queryParams.length}`
+  }
+
+  // IF PRICE RANGE
+  if (options.minimum_price_per_night && options.maximum_price_per_night) {
+    beginWith();
+    queryParams.push(options.minimum_price_per_night, options.maximum_price_per_night);
+    queryString += `cost_per_night < $${queryParams.length}
+    AND cost_per_night > $${queryParams.length-1}`
+  }
+
+  // GROUP BY before HAVING
+  queryString += `
+  GROUP BY properties.id`
+
+  // IF RATING FILTER
+  if (options.minimum_rating) {
+    // if there is already something in the params array need AND
+    queryParams.push(options.minimum_rating);
+    queryString += `
+    HAVING AVG(property_reviews.rating) > $${queryParams.length}`
+  }
+
+  // add GROUP BY, ORDER BY and LIMIT to the end of the string
+  queryParams.push(limit);
+  queryString += `
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `
+  console.log(queryString, queryParams);
+
   return pool
-  .query(`SELECT * FROM properties LIMIT $1`, [limit])
+  .query(queryString, queryParams)
   .then((result) => {
+    console.log(result.rows)
     return result.rows
   })
   .catch((err) => {
+    console.log('error: ' + err)
     return err.message
   });
 };
 exports.getAllProperties = getAllProperties;
+
+
+
+
+
+
+
+
 
 
 /**
